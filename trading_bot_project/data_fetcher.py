@@ -72,7 +72,9 @@ def get_historical_data(
         "end": iso_end,
         "timeframe": interval,
         "limit": limit,
+        "feed": "iex",  # <--- Add this line
     }
+
     all_bars: List[Dict[str, any]] = []
     # Loop because Alpaca may return partial data if there are more than
     # ``limit`` bars in the range.  The API returns bars sorted by time

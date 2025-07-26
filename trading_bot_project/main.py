@@ -39,7 +39,8 @@ class TradingBot:
         self.config = config
         self.alpaca_cfg = config.get("alpaca", {})
         self.symbols: List[str] = config.get("symbols", [])
-        self.interval: str = config.get("interval", "1H")
+        raw_strategy_cfg: Dict[str, any] = config.get("strategy", {})
+        self.interval: str = raw_strategy_cfg.get("interval", config.get("interval", "1D"))
         
         # --- Map config to expected structure for Strategy ---
         raw_strategy_cfg: Dict[str, any] = config.get("strategy", {})
@@ -74,7 +75,7 @@ class TradingBot:
             "thresholds": thresholds,
             "interval": self.interval,
         }
-        print("Strategy config passed to Strategy:", self.strategy_cfg)  # <--- Add this line
+        #print("Strategy config passed to Strategy:", self.strategy_cfg)  # <--- Add this line
 
         self.trade_cfg: Dict[str, any] = config.get("trade", {})
         self.notifier = Notifier(config.get("notifications", {}))
@@ -103,6 +104,8 @@ class TradingBot:
                 start_time = now - lookback_bars * period
                 # Fetch historical data
                 df = get_historical_data(symbol, start_time, now, self.interval, self.alpaca_cfg)
+                #print(f"Data head for {symbol}:\n", df.head())  # <--- Add this line
+                #print(len(df), "rows fetched for", symbol)  # <--- Add this line
                 if df.empty:
                     logger.warning("No data for %s; skipping", symbol)
                     continue
