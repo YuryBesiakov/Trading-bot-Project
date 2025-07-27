@@ -1,0 +1,122 @@
+# Enhanced Trading Bot Configuration
+# This example shows all the new features including Doji patterns and sophisticated trend analysis
+
+alpaca:
+  key_id: "YOUR_ALPACA_KEY_ID"
+  secret_key: "YOUR_ALPACA_SECRET_KEY"
+  data_url: "https://data.alpaca.markets"
+  trading_url: "https://paper-api.alpaca.markets"
+  paper: true
+
+symbols:
+  - AAPL
+  - TSLA
+  - MSFT
+  - GOOGL
+  - AMZN
+  - META
+  - NVDA
+  - JPM
+  - NFLX
+  - BAC
+
+schedule:
+  interval: "1H"
+
+strategy:
+  interval: "1D"
+  
+  # Enhanced Pattern Detection
+  patterns:
+    # Traditional patterns
+    bullish_engulfing: true
+    bearish_engulfing: true
+    hammer: true
+    shooting_star: true
+    gap_up: true
+    gap_down: true
+    double_top: true
+    double_bottom: true
+    
+    # New Doji patterns (missing from original)
+    doji: true
+    dragonfly_doji: true  # Bullish reversal
+    gravestone_doji: true # Bearish reversal
+    spinning_top: true    # Indecision pattern
+    doji_tolerance: 0.002 # 0.2% tolerance for doji detection
+    
+    # Trend patterns
+    higher_lows: true
+    lower_highs: true
+    
+  # Enhanced Technical Indicators
+  indicators:
+    # Basic moving averages
+    sma_20: true    # For "Average relative to average 20" requirement
+    sma_50: true
+    sma_200: true
+    ema_50: true
+    ema_200: true
+    
+    # RSI for overbought/oversold detection
+    rsi: true
+    rsi_window: 14
+    
+    # Enhanced trend analysis (NEW)
+    trend_strength: true
+    trend_short_window: 20
+    trend_long_window: 50
+    weekly_trend: true    # Weekly trend analysis
+    monthly_trend: true   # Monthly trend analysis
+    
+    # Enhanced volume analysis (NEW)
+    volume_analysis: true
+    volume_window: 20
+    
+    # Advanced support/resistance (NEW)
+    advanced_support_resistance: true
+    sr_window: 20
+    sr_min_touches: 2
+    
+    # Traditional support/resistance
+    support_resistance: true
+    fibonacci: true
+    
+    # Trend continuation/reversal
+    higher_lows: true
+    lower_highs: true
+    golden_cross: true
+    death_cross: true
+    
+  # Enhanced thresholds
+  thresholds:
+    # RSI thresholds (requirement: "RSI below 30 or above 70")
+    rsi_oversold: 30
+    rsi_overbought: 70
+    
+    # New trend strength thresholds
+    trend_strength_buy: 15   # Positive trend strength for buy signals
+    trend_strength_sell: -15 # Negative trend strength for sell signals
+
+# Trading configuration
+trading:
+  enabled: false   # Set to true for live trading
+
+# Notification configuration
+notifier:
+  enabled: false   # Set to true to enable notifications
+  telegram:
+    enabled: false
+    bot_token: "YOUR_TELEGRAM_BOT_TOKEN"
+    chat_id: "YOUR_CHAT_ID"
+  slack:
+    enabled: false
+    token: "YOUR_SLACK_TOKEN"
+    channel: "#trading-alerts"
+  email:
+    enabled: false
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    username: "your-email@gmail.com"
+    password: "your-app-password"
+    recipient: "recipient@gmail.com"

@@ -152,38 +152,437 @@ def death_cross(short_ma: pd.Series, long_ma: pd.Series) -> pd.Series:
     return cross_down
 
 
-def higher_lows(series: pd.Series, window: int = 3) -> pd.Series:
+def higher_lows(series: pd.Series, window: int = 3, min_periods: int = 2) -> pd.Series:
     """Identify higher lows in a series.
 
-    This simplistic implementation flags points where the low value is
-    higher than the previous ``window`` lows.  Use this as a crude
-    trend continuation signal.
+    This implementation identifies local lows and checks if each new low 
+    is higher than the previous significant low, indicating an uptrend.
+    Uses a more flexible approach that can detect both strict local minima
+    and relative lows within a rolling window.
 
     Args:
         series: Series of low prices.
-        window: Lookback window for comparison.
+        window: Lookback window for local minima detection.
+        min_periods: Minimum periods required around a point to consider it a local minimum.
 
     Returns:
         Boolean series where ``True`` indicates a higher low.
     """
-    rolling_min = series.rolling(window=window + 1).apply(lambda x: x[-1] > x[:-1].max(), raw=True)
-    # Replace NaN with False for initial periods
-    return rolling_min.fillna(False).astype(bool)
+    if len(series) < window * 2:
+        return pd.Series(False, index=series.index)
+    
+    # Method 1: Find local minima using scipy-like approach
+    local_lows = pd.Series(False, index=series.index)
+    
+    # More flexible local minima detection
+    for i in range(min_periods, len(series) - min_periods):
+        current_val = series.iloc[i]
+        
+        # Check if current value is lower than values within the window
+        left_vals = series.iloc[max(0, i-window):i]
+        right_vals = series.iloc[i+1:min(len(series), i+window+1)]
+        
+        # Current point is a local low if it's <= most surrounding values
+        left_condition = len(left_vals) == 0 or current_val <= left_vals.min()
+        right_condition = len(right_vals) == 0 or current_val <= right_vals.min()
+        
+        # Also check that it's not just equal to all values (flat line)
+        nearby_vals = pd.concat([left_vals, right_vals])
+        has_variation = len(nearby_vals) == 0 or nearby_vals.std() > 0.001
+        
+        if left_condition and right_condition and has_variation:
+            local_lows.iloc[i] = True
+    
+    # Method 2: Rolling minimum approach as backup
+    if local_lows.sum() < 2:
+        # Fallback: use rolling minimum with percentage threshold
+        rolling_min = series.rolling(window=window, center=True).min()
+        threshold = 0.001  # 0.1% threshold for considering a value a "low"
+        local_lows = series <= (rolling_min * (1 + threshold))
+    
+    # Identify higher lows
+    higher_lows_signal = pd.Series(False, index=series.index)
+    previous_lows = []
+    
+    for i in range(len(series)):
+        if local_lows.iloc[i]:
+            current_low = series.iloc[i]
+            
+            # Check against recent previous lows (not just the immediate previous)
+            if previous_lows:
+                # Compare against the lowest of recent lows
+                recent_min = min(previous_lows[-3:])  # Last 3 lows
+                if current_low > recent_min:
+                    higher_lows_signal.iloc[i] = True
+            
+            previous_lows.append(current_low)
+            
+            # Keep only recent lows to avoid memory issues
+            if len(previous_lows) > 10:
+                previous_lows = previous_lows[-5:]
+    
+    return higher_lows_signal
 
 
-def lower_highs(series: pd.Series, window: int = 3) -> pd.Series:
+def lower_highs(series: pd.Series, window: int = 3, min_periods: int = 2) -> pd.Series:
     """Identify lower highs in a series.
 
-    Flags points where the high value is lower than the previous
-    ``window`` highs.  This is the mirror of ``higher_lows`` for
-    downtrend continuation.
+    This implementation identifies local highs and checks if each new high 
+    is lower than the previous significant high, indicating a downtrend.
+    Uses a more flexible approach that can detect both strict local maxima
+    and relative highs within a rolling window.
 
     Args:
         series: Series of high prices.
-        window: Lookback window for comparison.
+        window: Lookback window for local maxima detection.
+        min_periods: Minimum periods required around a point to consider it a local maximum.
 
     Returns:
         Boolean series where ``True`` indicates a lower high.
     """
-    rolling_max = series.rolling(window=window + 1).apply(lambda x: x[-1] < x[:-1].min(), raw=True)
-    return rolling_max.fillna(False).astype(bool)
+    if len(series) < window * 2:
+        return pd.Series(False, index=series.index)
+    
+    # Method 1: Find local maxima using scipy-like approach
+    local_highs = pd.Series(False, index=series.index)
+    
+    # More flexible local maxima detection
+    for i in range(min_periods, len(series) - min_periods):
+        current_val = series.iloc[i]
+        
+        # Check if current value is higher than values within the window
+        left_vals = series.iloc[max(0, i-window):i]
+        right_vals = series.iloc[i+1:min(len(series), i+window+1)]
+        
+        # Current point is a local high if it's >= most surrounding values
+        left_condition = len(left_vals) == 0 or current_val >= left_vals.max()
+        right_condition = len(right_vals) == 0 or current_val >= right_vals.max()
+        
+        # Also check that it's not just equal to all values (flat line)
+        nearby_vals = pd.concat([left_vals, right_vals])
+        has_variation = len(nearby_vals) == 0 or nearby_vals.std() > 0.001
+        
+        if left_condition and right_condition and has_variation:
+            local_highs.iloc[i] = True
+    
+    # Method 2: Rolling maximum approach as backup
+    if local_highs.sum() < 2:
+        # Fallback: use rolling maximum with percentage threshold
+        rolling_max = series.rolling(window=window, center=True).max()
+        threshold = 0.001  # 0.1% threshold for considering a value a "high"
+        local_highs = series >= (rolling_max * (1 - threshold))
+    
+    # Identify lower highs
+    lower_highs_signal = pd.Series(False, index=series.index)
+    previous_highs = []
+    
+    for i in range(len(series)):
+        if local_highs.iloc[i]:
+            current_high = series.iloc[i]
+            
+            # Check against recent previous highs (not just the immediate previous)
+            if previous_highs:
+                # Compare against the highest of recent highs
+                recent_max = max(previous_highs[-3:])  # Last 3 highs
+                if current_high < recent_max:
+                    lower_highs_signal.iloc[i] = True
+            
+            previous_highs.append(current_high)
+            
+            # Keep only recent highs to avoid memory issues
+            if len(previous_highs) > 10:
+                previous_highs = previous_highs[-5:]
+    
+    return lower_highs_signal
+
+
+def simple_higher_lows(series: pd.Series, lookback: int = 5) -> pd.Series:
+    """Simple alternative implementation for higher lows detection.
+    
+    Compares current low against the minimum of recent lows in a rolling window.
+    More straightforward but potentially less precise than the main implementation.
+    
+    Args:
+        series: Series of low prices.
+        lookback: Number of periods to look back for comparison.
+        
+    Returns:
+        Boolean series where True indicates a potential higher low.
+    """
+    rolling_min = series.rolling(window=lookback).min()
+    # Current value is higher than the minimum of recent values
+    higher_low_signal = (series > rolling_min.shift(1)) & (series.shift(1) <= rolling_min.shift(2))
+    return higher_low_signal.fillna(False)
+
+
+def simple_lower_highs(series: pd.Series, lookback: int = 5) -> pd.Series:
+    """Simple alternative implementation for lower highs detection.
+    
+    Compares current high against the maximum of recent highs in a rolling window.
+    More straightforward but potentially less precise than the main implementation.
+    
+    Args:
+        series: Series of high prices.
+        lookback: Number of periods to look back for comparison.
+        
+    Returns:
+        Boolean series where True indicates a potential lower high.
+    """
+    rolling_max = series.rolling(window=lookback).max()
+    # Current value is lower than the maximum of recent values
+    lower_high_signal = (series < rolling_max.shift(1)) & (series.shift(1) >= rolling_max.shift(2))
+    return lower_high_signal.fillna(False)
+
+
+def trend_strength(df: pd.DataFrame, short_window: int = 20, long_window: int = 50) -> pd.Series:
+    """Calculate trend strength using multiple timeframes.
+
+    Combines price momentum, moving average slopes, and volatility
+    to determine trend strength. Returns values between -100 (strong downtrend)
+    and +100 (strong uptrend).
+
+    Args:
+        df: DataFrame with OHLCV data.
+        short_window: Short-term moving average period.
+        long_window: Long-term moving average period.
+
+    Returns:
+        Series with trend strength values.
+    """
+    close = df["close"]
+    
+    # Price momentum (rate of change)
+    price_momentum = ((close / close.shift(short_window)) - 1) * 100
+    
+    # Moving average slopes
+    sma_short = sma(close, short_window)
+    sma_long = sma(close, long_window)
+    
+    ma_short_slope = ((sma_short / sma_short.shift(5)) - 1) * 100
+    ma_long_slope = ((sma_long / sma_long.shift(10)) - 1) * 100
+    
+    # Volatility adjustment (lower volatility = stronger trend)
+    volatility = close.rolling(window=short_window).std() / close.rolling(window=short_window).mean()
+    volatility_factor = 1 - (volatility / volatility.rolling(window=long_window).mean()).clip(0, 2)
+    
+    # Combine components with weights
+    trend_score = (
+        price_momentum * 0.4 +
+        ma_short_slope * 0.3 +
+        ma_long_slope * 0.3
+    ) * volatility_factor
+    
+    # Normalize to -100 to +100 range
+    return trend_score.clip(-100, 100)
+
+
+def weekly_trend_analysis(df: pd.DataFrame) -> pd.DataFrame:
+    """Analyze trend over weekly timeframes.
+
+    Resamples data to weekly and calculates trend metrics including
+    direction, strength, and consistency.
+
+    Args:
+        df: DataFrame with OHLCV data and datetime index.
+
+    Returns:
+        DataFrame with weekly trend analysis metrics.
+    """
+    # Resample to weekly data
+    weekly = df.resample('W').agg({
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last',
+        'volume': 'sum'
+    }).dropna()
+    
+    if len(weekly) < 4:
+        # Not enough data for weekly analysis
+        return pd.DataFrame(index=df.index)
+    
+    # Weekly price change
+    weekly['price_change'] = weekly['close'].pct_change()
+    
+    # Weekly trend direction (1 = up, -1 = down, 0 = sideways)
+    weekly['trend_direction'] = np.where(
+        weekly['price_change'] > 0.02, 1,
+        np.where(weekly['price_change'] < -0.02, -1, 0)
+    )
+    
+    # Trend consistency (how many of last 4 weeks were in same direction)
+    weekly['trend_consistency'] = weekly['trend_direction'].rolling(4).apply(
+        lambda x: (x == x.iloc[-1]).sum() / len(x) if len(x) > 0 else 0
+    )
+    
+    # Weekly volatility
+    weekly['volatility'] = weekly['close'].rolling(4).std() / weekly['close'].rolling(4).mean()
+    
+    # Forward fill to daily index
+    result = weekly[['trend_direction', 'trend_consistency', 'volatility']].reindex(
+        df.index, method='ffill'
+    )
+    
+    return result
+
+
+def monthly_trend_analysis(df: pd.DataFrame) -> pd.DataFrame:
+    """Analyze trend over monthly timeframes.
+
+    Similar to weekly analysis but over monthly periods for longer-term
+    trend identification.
+
+    Args:
+        df: DataFrame with OHLCV data and datetime index.
+
+    Returns:
+        DataFrame with monthly trend analysis metrics.
+    """
+    # Resample to monthly data
+    monthly = df.resample('ME').agg({
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last',
+        'volume': 'sum'
+    }).dropna()
+    
+    if len(monthly) < 3:
+        # Not enough data for monthly analysis
+        return pd.DataFrame(index=df.index)
+    
+    # Monthly price change
+    monthly['price_change'] = monthly['close'].pct_change()
+    
+    # Monthly trend direction
+    monthly['trend_direction'] = np.where(
+        monthly['price_change'] > 0.05, 1,
+        np.where(monthly['price_change'] < -0.05, -1, 0)
+    )
+    
+    # Trend momentum (acceleration/deceleration)
+    monthly['trend_momentum'] = monthly['price_change'].diff()
+    
+    # Monthly support/resistance levels
+    monthly['monthly_high'] = monthly['high'].rolling(3).max()
+    monthly['monthly_low'] = monthly['low'].rolling(3).min()
+    
+    # Forward fill to daily index
+    result = monthly[['trend_direction', 'trend_momentum', 'monthly_high', 'monthly_low']].reindex(
+        df.index, method='ffill'
+    )
+    
+    return result
+
+
+def volume_trend_analysis(df: pd.DataFrame, window: int = 20) -> pd.DataFrame:
+    """Enhanced volume analysis relative to price trends.
+
+    Analyzes volume patterns to confirm or diverge from price movements.
+    
+    Args:
+        df: DataFrame with OHLCV data.
+        window: Period for volume moving average.
+
+    Returns:
+        DataFrame with volume analysis metrics.
+    """
+    close = df["close"]
+    volume = df["volume"]
+    
+    # Volume moving average
+    vol_ma = sma(volume, window)
+    
+    # Volume ratio (current vs average)
+    vol_ratio = volume / vol_ma
+    
+    # Price change
+    price_change = close.pct_change()
+    
+    # Volume-Price Trend (VPT)
+    vpt = (volume * price_change).cumsum()
+    
+    # On-Balance Volume (OBV)
+    obv = (volume * np.where(price_change > 0, 1, 
+                            np.where(price_change < 0, -1, 0))).cumsum()
+    
+    # Volume trend (rising/falling)
+    vol_trend = np.where(
+        vol_ratio > 1.2, 1,  # Rising volume
+        np.where(vol_ratio < 0.8, -1, 0)  # Falling volume
+    )
+    
+    # Volume-price confirmation
+    # 1 = volume confirms price, -1 = volume diverges, 0 = neutral
+    vol_price_confirmation = np.where(
+        (price_change > 0) & (vol_trend == 1), 1,  # Up price + up volume
+        np.where((price_change < 0) & (vol_trend == 1), 1,  # Down price + up volume
+                np.where((price_change > 0) & (vol_trend == -1), -1,  # Up price + down volume
+                        np.where((price_change < 0) & (vol_trend == -1), -1, 0)))  # Down price + down volume
+    )
+    
+    return pd.DataFrame({
+        'vol_ratio': vol_ratio,
+        'vol_trend': vol_trend,
+        'vpt': vpt,
+        'obv': obv,
+        'vol_price_confirmation': vol_price_confirmation
+    }, index=df.index)
+
+
+def advanced_support_resistance(df: pd.DataFrame, window: int = 20, min_touches: int = 2) -> pd.DataFrame:
+    """Advanced support and resistance level detection.
+
+    Identifies dynamic support/resistance levels based on price action
+    and volume confirmation.
+
+    Args:
+        df: DataFrame with OHLCV data.
+        window: Lookback window for level detection.
+        min_touches: Minimum number of touches to confirm a level.
+
+    Returns:
+        DataFrame with support/resistance levels and strength.
+    """
+    high = df["high"]
+    low = df["low"]
+    close = df["close"]
+    volume = df["volume"]
+    
+    # Rolling highs and lows
+    resistance_level = high.rolling(window).max()
+    support_level = low.rolling(window).min()
+    
+    # Level strength based on number of touches and volume
+    resistance_touches = pd.Series(0, index=df.index)
+    support_touches = pd.Series(0, index=df.index)
+    
+    for i in range(window, len(df)):
+        # Check resistance touches
+        recent_highs = high.iloc[i-window:i]
+        max_high = recent_highs.max()
+        touches = (recent_highs >= max_high * 0.995).sum()  # Within 0.5% of max
+        resistance_touches.iloc[i] = touches
+        
+        # Check support touches
+        recent_lows = low.iloc[i-window:i]
+        min_low = recent_lows.min()
+        touches = (recent_lows <= min_low * 1.005).sum()  # Within 0.5% of min
+        support_touches.iloc[i] = touches
+    
+    # Level strength (0-5 scale)
+    resistance_strength = np.clip(resistance_touches / min_touches, 0, 5)
+    support_strength = np.clip(support_touches / min_touches, 0, 5)
+    
+    # Distance from current price to levels
+    resistance_distance = (resistance_level - close) / close
+    support_distance = (close - support_level) / close
+    
+    return pd.DataFrame({
+        'resistance_level': resistance_level,
+        'support_level': support_level,
+        'resistance_strength': resistance_strength,
+        'support_strength': support_strength,
+        'resistance_distance': resistance_distance,
+        'support_distance': support_distance
+    }, index=df.index)

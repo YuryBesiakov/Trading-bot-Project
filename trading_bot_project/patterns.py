@@ -6,16 +6,12 @@ Series aligned with the input DataFrame’s index, where ``True``
 indicates the presence of the pattern on that bar.  Some complex
 formations (e.g. cup and handle, rising wedge) are provided as stubs
 that return ``False`` for all rows – these can be enhanced later.
-
-The detection logic is intentionally simplified.  Sophisticated
-pattern recognition may require more advanced techniques such as
-peak/trough extraction or machine learning, which are beyond the
-scope of this example.
 """
 
 from __future__ import annotations
 
 import pandas as pd
+import numpy as np
 
 
 def detect_bullish_engulfing(df: pd.DataFrame) -> pd.Series:
@@ -142,6 +138,111 @@ def detect_shooting_star(df: pd.DataFrame) -> pd.Series:
     long_upper = upper_shadow / candle_range > 0.5
     tiny_lower = lower_shadow / candle_range < 0.2
     return (small_body & long_upper & tiny_lower).fillna(False)
+
+
+def detect_doji(df: pd.DataFrame, tolerance: float = 0.001) -> pd.Series:
+    """Detect Doji candlesticks.
+
+    A Doji occurs when the opening and closing prices are virtually equal,
+    creating a cross-like appearance. This indicates market indecision.
+
+    Args:
+        df: DataFrame with OHLC data.
+        tolerance: Maximum relative difference between open and close (default 0.1%).
+
+    Returns:
+        Boolean Series indicating Doji candles.
+    """
+    body = (df["close"] - df["open"]).abs()
+    candle_range = df["high"] - df["low"]
+    # Avoid division by zero
+    candle_range = candle_range.replace(0, pd.NA)
+    body_ratio = body / candle_range
+    # Doji: very small body relative to range
+    is_doji = body_ratio < tolerance
+    return is_doji.fillna(False)
+
+
+def detect_dragonfly_doji(df: pd.DataFrame, tolerance: float = 0.001) -> pd.Series:
+    """Detect Dragonfly Doji candlesticks.
+
+    A Dragonfly Doji has a small body at the top with a long lower shadow
+    and little to no upper shadow. Often bullish reversal signal.
+
+    Args:
+        df: DataFrame with OHLC data.
+        tolerance: Body size tolerance relative to total range.
+
+    Returns:
+        Boolean Series indicating Dragonfly Doji candles.
+    """
+    body = (df["close"] - df["open"]).abs()
+    candle_range = df["high"] - df["low"]
+    lower_shadow = df[["open", "close"]].min(axis=1) - df["low"]
+    upper_shadow = df["high"] - df[["open", "close"]].max(axis=1)
+    
+    # Avoid division by zero
+    candle_range = candle_range.replace(0, pd.NA)
+    
+    small_body = body / candle_range < tolerance
+    long_lower = lower_shadow / candle_range > 0.6
+    tiny_upper = upper_shadow / candle_range < 0.1
+    
+    return (small_body & long_lower & tiny_upper).fillna(False)
+
+
+def detect_gravestone_doji(df: pd.DataFrame, tolerance: float = 0.001) -> pd.Series:
+    """Detect Gravestone Doji candlesticks.
+
+    A Gravestone Doji has a small body at the bottom with a long upper shadow
+    and little to no lower shadow. Often bearish reversal signal.
+
+    Args:
+        df: DataFrame with OHLC data.
+        tolerance: Body size tolerance relative to total range.
+
+    Returns:
+        Boolean Series indicating Gravestone Doji candles.
+    """
+    body = (df["close"] - df["open"]).abs()
+    candle_range = df["high"] - df["low"]
+    lower_shadow = df[["open", "close"]].min(axis=1) - df["low"]
+    upper_shadow = df["high"] - df[["open", "close"]].max(axis=1)
+    
+    # Avoid division by zero
+    candle_range = candle_range.replace(0, pd.NA)
+    
+    small_body = body / candle_range < tolerance
+    long_upper = upper_shadow / candle_range > 0.6
+    tiny_lower = lower_shadow / candle_range < 0.1
+    
+    return (small_body & long_upper & tiny_lower).fillna(False)
+
+
+def detect_spinning_top(df: pd.DataFrame) -> pd.Series:
+    """Detect Spinning Top candlesticks.
+
+    A Spinning Top has a small body with long shadows on both sides,
+    indicating indecision in the market.
+
+    Args:
+        df: DataFrame with OHLC data.
+
+    Returns:
+        Boolean Series indicating Spinning Top candles.
+    """
+    body = (df["close"] - df["open"]).abs()
+    candle_range = df["high"] - df["low"]
+    lower_shadow = df[["open", "close"]].min(axis=1) - df["low"]
+    upper_shadow = df["high"] - df[["open", "close"]].max(axis=1)
+    
+    # Avoid division by zero
+    candle_range = candle_range.replace(0, pd.NA)
+    
+    small_body = body / candle_range < 0.25
+    balanced_shadows = (lower_shadow / candle_range > 0.3) & (upper_shadow / candle_range > 0.3)
+    
+    return (small_body & balanced_shadows).fillna(False)
 
 
 def detect_double_top(df: pd.DataFrame, window: int = 5, tolerance: float = 0.005) -> pd.Series:
